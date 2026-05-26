@@ -1,7 +1,7 @@
 import React from 'react'
 import { jankTheme } from '../theme'
 
-export default function TitleBar({ title, onNewProject, onRun, canRun }) {
+export default function TitleBar({ title, onNewProject, onRun, canRun, onSettings }) {
   return (
     <div style={{
       height: 44,
@@ -31,7 +31,7 @@ export default function TitleBar({ title, onNewProject, onRun, canRun }) {
         )}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, WebkitAppRegion: 'no-drag' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, WebkitAppRegion: 'no-drag' }}>
         <button
           onClick={onNewProject}
           title="New Project"
@@ -59,6 +59,20 @@ export default function TitleBar({ title, onNewProject, onRun, canRun }) {
             Run
           </button>
         )}
+        <button
+          onClick={onSettings}
+          title="Settings"
+          style={{
+            background: 'transparent', color: jankTheme.textMuted,
+            border: `1px solid ${jankTheme.border}`, borderRadius: 4,
+            padding: '4px 8px', fontSize: 6,
+            cursor: 'pointer', fontFamily: 'inherit',
+          }}
+          onMouseEnter={e => e.currentTarget.style.color = jankTheme.accent}
+          onMouseLeave={e => e.currentTarget.style.color = jankTheme.textMuted}
+        >
+          cfg
+        </button>
         <div style={{ display: 'flex', gap: 8 }}>
           <WinBtn color="#FFC107" title="Minimize" onClick={() => window.api.minimize()} />
           <WinBtn color="#8BC34A" title="Maximize" onClick={() => window.api.maximize()} />

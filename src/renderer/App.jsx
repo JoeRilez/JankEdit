@@ -4,8 +4,10 @@ import FileTree from './components/FileTree'
 import EditorPane from './components/EditorPane'
 import TerminalPanel from './components/TerminalPanel'
 import NewProjectModal from './components/NewProjectModal'
+import SettingsModal from './components/SettingsModal'
 import { jankTheme } from './theme'
 import { lspClient } from './lsp/lspClient'
+import { loadSettings } from './settings'
 
 export default function App() {
   const [openFiles, setOpenFiles]   = useState([])
@@ -13,7 +15,9 @@ export default function App() {
   const [termVisible,    setTermVisible]    = useState(false)
   const [termMounted,    setTermMounted]    = useState(false)
   const [openFolder,     setOpenFolder]     = useState(null)
-  const [showNewProject, setShowNewProject] = useState(false)
+  const [showNewProject,  setShowNewProject]  = useState(false)
+  const [showSettings,    setShowSettings]    = useState(false)
+  const [settings,        setSettings]        = useState(loadSettings)
 
   const toggleTerm = useCallback(() => {
     setTermVisible(v => {
@@ -104,7 +108,15 @@ export default function App() {
         onNewProject={() => setShowNewProject(true)}
         onRun={runActiveFile}
         canRun={canRun}
+        onSettings={() => setShowSettings(true)}
       />
+      {showSettings && (
+        <SettingsModal
+          settings={settings}
+          onClose={() => setShowSettings(false)}
+          onChange={setSettings}
+        />
+      )}
       {showNewProject && (
         <NewProjectModal
           onClose={() => setShowNewProject(false)}
@@ -161,7 +173,7 @@ export default function App() {
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <FileTree onFileOpen={openFile} onFolderOpen={setOpenFolder} externalFolder={openFolder} />
-        <EditorPane file={activeFile} content={activeFile?.content} onChange={handleChange} />
+        <EditorPane file={activeFile} content={activeFile?.content} onChange={handleChange} settings={settings} />
       </div>
 
       {termMounted && (

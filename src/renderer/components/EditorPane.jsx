@@ -15,7 +15,7 @@ function getLanguage(filePath) {
   return LANG_MAP[ext] ?? 'plaintext'
 }
 
-export default function EditorPane({ file, content, onChange }) {
+export default function EditorPane({ file, content, onChange, settings }) {
   const editorRef = useRef(null)
 
   const handleMount = (editor, monaco) => {
@@ -24,6 +24,18 @@ export default function EditorPane({ file, content, onChange }) {
     monaco.editor.setTheme('jankedit')
     lspClient.init(monaco)
   }
+
+  // Apply settings live whenever they change
+  useEffect(() => {
+    if (!editorRef.current || !settings) return
+    editorRef.current.updateOptions({
+      fontSize:    settings.fontSize,
+      tabSize:     settings.tabSize,
+      wordWrap:    settings.wordWrap ? 'on' : 'off',
+      minimap:     { enabled: settings.minimap },
+      lineNumbers: settings.lineNumbers ? 'on' : 'off',
+    })
+  }, [settings])
 
   useEffect(() => {
     if (file?.path && content !== undefined) {
@@ -56,11 +68,13 @@ export default function EditorPane({ file, content, onChange }) {
       onChange={onChange}
       onMount={handleMount}
       options={{
-        fontSize: 14,
+        fontSize:    settings?.fontSize ?? 14,
+        tabSize:     settings?.tabSize  ?? 4,
+        wordWrap:    settings?.wordWrap ? 'on' : 'off',
+        minimap:     { enabled: settings?.minimap ?? true },
+        lineNumbers: (settings?.lineNumbers ?? true) ? 'on' : 'off',
         fontFamily: "'Cascadia Code', 'Fira Code', Consolas, monospace",
         fontLigatures: true,
-        lineNumbers: 'on',
-        minimap: { enabled: true },
         scrollBeyondLastLine: false,
         renderWhitespace: 'selection',
         cursorBlinking: 'smooth',
