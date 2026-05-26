@@ -1,0 +1,24 @@
+{
+  "name": "jankedit",
+  "version": "0.1.0",
+  "description": "JankEdit - My Personal IDE",
+  "main": "src/main.js",
+  "scripts": {
+    "dev:vite": "vite",
+    "dev:electron": "wait-on http://localhost:5173 && node node_modules/electron/dist/electron.exe .",
+    "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.6.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.4.1",
+    "concurrently": "^9.1.2",
+    "electron": "^33.4.11",
+    "vite": "^5.4.11",
+    "wait-on": "^8.0.3"
+  }
+}
