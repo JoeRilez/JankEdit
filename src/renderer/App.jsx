@@ -46,14 +46,6 @@ export default function App() {
 
   const canRun = activeFile && ['py','c','cpp','java','kt'].includes(activeFile.name.split('.').pop().toLowerCase())
 
-  const handleProjectCreated = useCallback(({ projectPath, mainFile, mainFileName }) => {
-    setShowNewProject(false)
-    setOpenFolder(projectPath)
-    if (mainFile && mainFileName) {
-      openFile({ path: mainFile, name: mainFileName })
-    }
-  }, [openFile])
-
   const openFile = useCallback(async (entry) => {
     const existing = openFiles.findIndex(f => f.path === entry.path)
     if (existing !== -1) { setActiveIdx(existing); return }
@@ -63,6 +55,14 @@ export default function App() {
       return [...prev, { path: entry.path, name: entry.name, content, dirty: false }]
     })
   }, [openFiles])
+
+  const handleProjectCreated = useCallback(({ projectPath, mainFile, mainFileName }) => {
+    setShowNewProject(false)
+    setOpenFolder(projectPath)
+    if (mainFile && mainFileName) {
+      openFile({ path: mainFile, name: mainFileName })
+    }
+  }, [openFile])
 
   const handleChange = useCallback((value) => {
     setOpenFiles(prev => {
