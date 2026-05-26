@@ -75,6 +75,39 @@ ipcMain.handle('window-maximize', () => {
 })
 ipcMain.handle('window-close', () => BrowserWindow.getFocusedWindow()?.close())
 
+let termProcess = null
+
+ipcMain.handle('terminal:start', (event, cwd) => {
+  if (termProcess) { try { termProcess.kill() } catch {} }
+
+  termProcess = require('child_process').spawn(
+    'powershell.exe',
+    ['-NoLogo', '-NoProfile'],
+    {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: cwd || process.env.USERPROFILE || 'C:\\',
+      env: { ...process.env },
+    }
+  )
+
+  termProcess.stdout.on('data', d => event.sender.send('terminal:data', d.toString()))
+  termProcess.stderr.on('data', d => event.sender.send('terminal:data', d.toString()))
+  termProcess.on('exit', code => {
+    termProcess = null
+    event.sender.send('terminal:exit', code)
+  })
+  return true
+})
+
+ipcMain.on('terminal:write', (_e, data) => {
+  termProcess?.stdin.write(data)
+})
+
+ipcMain.on('terminal:kill', () => {
+  try { termProcess?.kill() } catch {}
+  termProcess = null
+})
+
 ipcMain.handle('lsp:request', async (_e, langId, method, params) => {
   return lspManager.request(langId, method, params)
 })

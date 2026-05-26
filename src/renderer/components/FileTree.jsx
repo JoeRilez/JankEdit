@@ -53,7 +53,7 @@ function FileEntry({ entry, depth, onFileOpen }) {
   )
 }
 
-export default function FileTree({ onFileOpen }) {
+export default function FileTree({ onFileOpen, onFolderOpen }) {
   const [entries, setEntries] = useState([])
 
   const openFolder = async () => {
@@ -62,6 +62,7 @@ export default function FileTree({ onFileOpen }) {
     const items = await window.api.readDir(folderPath)
     if (!items.error) {
       setEntries(items.filter(i => !i.name.startsWith('.')))
+      onFolderOpen?.(folderPath)
     }
   }
 

@@ -2,12 +2,16 @@ import React, { useState, useEffect, useCallback } from 'react'
 import TitleBar from './components/TitleBar'
 import FileTree from './components/FileTree'
 import EditorPane from './components/EditorPane'
+import TerminalPanel from './components/TerminalPanel'
 import { jankTheme } from './theme'
 import { lspClient } from './lsp/lspClient'
 
 export default function App() {
-  const [openFiles, setOpenFiles] = useState([])
-  const [activeIdx, setActiveIdx] = useState(0)
+  const [openFiles, setOpenFiles]   = useState([])
+  const [activeIdx, setActiveIdx]   = useState(0)
+  const [termVisible, setTermVisible] = useState(false)
+  const [openFolder, setOpenFolder]   = useState(null)
+  const TERM_HEIGHT = 240
 
   const activeFile = openFiles[activeIdx] ?? null
 
@@ -47,6 +51,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveFile() }
+      if ((e.ctrlKey || e.metaKey) && e.key === '`') { e.preventDefault(); setTermVisible(v => !v) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -104,9 +109,16 @@ export default function App() {
       )}
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <FileTree onFileOpen={openFile} />
+        <FileTree onFileOpen={openFile} onFolderOpen={setOpenFolder} />
         <EditorPane file={activeFile} content={activeFile?.content} onChange={handleChange} />
       </div>
+
+      <TerminalPanel
+        visible={termVisible}
+        height={TERM_HEIGHT}
+        workingDir={openFolder}
+        onToggle={() => setTermVisible(v => !v)}
+      />
 
       <div style={{
         height: 30,
@@ -121,6 +133,23 @@ export default function App() {
         {activeFile && (
           <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: 6 }}>{activeFile.path}</span>
         )}
+        <button
+          onClick={() => setTermVisible(v => !v)}
+          title="Toggle Terminal (Ctrl+`)"
+          style={{
+            marginLeft: 'auto',
+            background: termVisible ? 'rgba(0,0,0,0.25)' : 'transparent',
+            border: '1px solid rgba(255,255,255,0.3)',
+            color: 'white',
+            padding: '1px 8px',
+            cursor: 'pointer',
+            fontSize: 6,
+            fontFamily: "'Press Start 2P', monospace",
+            borderRadius: 3,
+          }}
+        >
+          &gt;_
+        </button>
       </div>
     </div>
   )
