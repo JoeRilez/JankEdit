@@ -10,9 +10,17 @@ import { lspClient } from './lsp/lspClient'
 export default function App() {
   const [openFiles, setOpenFiles]   = useState([])
   const [activeIdx, setActiveIdx]   = useState(0)
-  const [termVisible,     setTermVisible]     = useState(false)
-  const [openFolder,      setOpenFolder]      = useState(null)
-  const [showNewProject,  setShowNewProject]  = useState(false)
+  const [termVisible,    setTermVisible]    = useState(false)
+  const [termMounted,    setTermMounted]    = useState(false)
+  const [openFolder,     setOpenFolder]     = useState(null)
+  const [showNewProject, setShowNewProject] = useState(false)
+
+  const toggleTerm = useCallback(() => {
+    setTermVisible(v => {
+      if (!v) setTermMounted(true)
+      return !v
+    })
+  }, [])
   const TERM_HEIGHT = 240
 
   const activeFile = openFiles[activeIdx] ?? null
@@ -31,8 +39,9 @@ export default function App() {
     const cmd = RUN_COMMANDS[ext]
     if (!cmd) return
     const dir = activeFile.path.replace(/[\\/][^\\/]+$/, '')
+    setTermMounted(true)
     setTermVisible(true)
-    setTimeout(() => window.api.terminalWrite(cmd(activeFile.path, dir, activeFile.name)), 100)
+    setTimeout(() => window.api.terminalWrite(cmd(activeFile.path, dir, activeFile.name)), 300)
   }, [activeFile])
 
   const canRun = activeFile && ['py','c','cpp','java','kt'].includes(activeFile.name.split('.').pop().toLowerCase())
@@ -81,7 +90,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveFile() }
-      if ((e.ctrlKey || e.metaKey) && e.key === '`') { e.preventDefault(); setTermVisible(v => !v) }
+      if ((e.ctrlKey || e.metaKey) && e.key === '`') { e.preventDefault(); toggleTerm() }
       if ((e.ctrlKey || e.metaKey) && e.key === 'r') { e.preventDefault(); runActiveFile() }
     }
     window.addEventListener('keydown', onKey)
@@ -155,12 +164,14 @@ export default function App() {
         <EditorPane file={activeFile} content={activeFile?.content} onChange={handleChange} />
       </div>
 
-      <TerminalPanel
-        visible={termVisible}
-        height={TERM_HEIGHT}
-        workingDir={openFolder}
-        onToggle={() => setTermVisible(v => !v)}
-      />
+      {termMounted && (
+        <TerminalPanel
+          visible={termVisible}
+          height={TERM_HEIGHT}
+          workingDir={openFolder}
+          onToggle={toggleTerm}
+        />
+      )}
 
       <div style={{
         height: 30,
@@ -176,7 +187,7 @@ export default function App() {
           <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: 6 }}>{activeFile.path}</span>
         )}
         <button
-          onClick={() => setTermVisible(v => !v)}
+          onClick={toggleTerm}
           title="Toggle Terminal (Ctrl+`)"
           style={{
             marginLeft: 'auto',
