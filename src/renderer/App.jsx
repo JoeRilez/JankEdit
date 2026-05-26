@@ -3,6 +3,7 @@ import TitleBar from './components/TitleBar'
 import FileTree from './components/FileTree'
 import EditorPane from './components/EditorPane'
 import { jankTheme } from './theme'
+import { lspClient } from './lsp/lspClient'
 
 export default function App() {
   const [openFiles, setOpenFiles] = useState([])
@@ -21,7 +22,11 @@ export default function App() {
   }, [openFiles])
 
   const handleChange = useCallback((value) => {
-    setOpenFiles(prev => prev.map((f, i) => i === activeIdx ? { ...f, content: value, dirty: true } : f))
+    setOpenFiles(prev => {
+      const file = prev[activeIdx]
+      if (file) lspClient.changeDocument(file.path, value)
+      return prev.map((f, i) => i === activeIdx ? { ...f, content: value, dirty: true } : f)
+    })
   }, [activeIdx])
 
   const saveFile = useCallback(async () => {
@@ -32,7 +37,10 @@ export default function App() {
 
   const closeTab = useCallback((idx, e) => {
     e.stopPropagation()
-    setOpenFiles(prev => prev.filter((_, i) => i !== idx))
+    setOpenFiles(prev => {
+      lspClient.closeDocument(prev[idx].path)
+      return prev.filter((_, i) => i !== idx)
+    })
     setActiveIdx(prev => Math.max(0, prev >= idx ? prev - 1 : prev))
   }, [])
 

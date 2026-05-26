@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const lspManager = require('./lsp/lspManager')
 
 const isDev = !app.isPackaged
 
@@ -22,6 +23,10 @@ function createWindow() {
   } else {
     win.loadFile(path.join(__dirname, '../dist/index.html'))
   }
+
+  win.webContents.on('did-finish-load', () => {
+    lspManager.setWebContents(win.webContents)
+  })
 }
 
 ipcMain.handle('read-dir', async (_e, dirPath) => {
@@ -70,5 +75,14 @@ ipcMain.handle('window-maximize', () => {
 })
 ipcMain.handle('window-close', () => BrowserWindow.getFocusedWindow()?.close())
 
+ipcMain.handle('lsp:request', async (_e, langId, method, params) => {
+  return lspManager.request(langId, method, params)
+})
+
+ipcMain.on('lsp:notify', (_e, langId, method, params) => {
+  lspManager.notify(langId, method, params)
+})
+
 app.whenReady().then(createWindow)
+app.on('before-quit', () => lspManager.stopAll())
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })

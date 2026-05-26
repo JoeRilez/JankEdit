@@ -1,6 +1,7 @@
-import React, { useRef } from 'react'
+import React, { useRef, useEffect } from 'react'
 import Editor from '@monaco-editor/react'
 import { jankTheme, monacoTheme } from '../theme'
+import { lspClient } from '../lsp/lspClient'
 
 const LANG_MAP = {
   c: 'c', h: 'cpp', cpp: 'cpp', hpp: 'cpp', cc: 'cpp',
@@ -21,7 +22,14 @@ export default function EditorPane({ file, content, onChange }) {
     editorRef.current = editor
     monaco.editor.defineTheme('jankedit', monacoTheme)
     monaco.editor.setTheme('jankedit')
+    lspClient.init(monaco)
   }
+
+  useEffect(() => {
+    if (file?.path && content !== undefined) {
+      lspClient.openDocument(file.path, content)
+    }
+  }, [file?.path])
 
   if (!file) {
     return (
