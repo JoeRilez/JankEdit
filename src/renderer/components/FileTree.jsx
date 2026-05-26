@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { jankTheme } from '../theme'
 
 function FileEntry({ entry, depth, onFileOpen }) {
@@ -53,8 +53,15 @@ function FileEntry({ entry, depth, onFileOpen }) {
   )
 }
 
-export default function FileTree({ onFileOpen, onFolderOpen }) {
+export default function FileTree({ onFileOpen, onFolderOpen, externalFolder }) {
   const [entries, setEntries] = useState([])
+
+  useEffect(() => {
+    if (!externalFolder) return
+    window.api.readDir(externalFolder).then(items => {
+      if (!items.error) setEntries(items.filter(i => !i.name.startsWith('.')))
+    })
+  }, [externalFolder])
 
   const openFolder = async () => {
     const folderPath = await window.api.openFolderDialog()

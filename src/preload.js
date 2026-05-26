@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('api', {
   readFile: (path)          => ipcRenderer.invoke('read-file', path),
   writeFile:(path, content) => ipcRenderer.invoke('write-file', path, content),
   openFolderDialog: ()              => ipcRenderer.invoke('open-folder-dialog'),
+  createProject: (opts) => ipcRenderer.invoke('create-project', opts),
   terminalStart:      (cwd) => ipcRenderer.invoke('terminal:start', cwd),
   terminalWrite:      (data) => ipcRenderer.send('terminal:write', data),
   terminalKill:       ()    => ipcRenderer.send('terminal:kill'),

@@ -1,7 +1,7 @@
 import React from 'react'
 import { jankTheme } from '../theme'
 
-export default function TitleBar({ title }) {
+export default function TitleBar({ title, onNewProject }) {
   return (
     <div style={{
       height: 44,
@@ -31,10 +31,25 @@ export default function TitleBar({ title }) {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, WebkitAppRegion: 'no-drag' }}>
-        <WinBtn color="#FFC107" title="Minimize" onClick={() => window.api.minimize()} />
-        <WinBtn color="#8BC34A" title="Maximize" onClick={() => window.api.maximize()} />
-        <WinBtn color="#E8793A" title="Close"    onClick={() => window.api.close()} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, WebkitAppRegion: 'no-drag' }}>
+        <button
+          onClick={onNewProject}
+          title="New Project"
+          style={{
+            background: jankTheme.accent, color: 'white',
+            border: 'none', borderRadius: 4,
+            padding: '4px 10px', fontSize: 6,
+            cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700,
+            letterSpacing: '0.05em',
+          }}
+        >
+          + New
+        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <WinBtn color="#FFC107" title="Minimize" onClick={() => window.api.minimize()} />
+          <WinBtn color="#8BC34A" title="Maximize" onClick={() => window.api.maximize()} />
+          <WinBtn color="#E8793A" title="Close"    onClick={() => window.api.close()} />
+        </div>
       </div>
     </div>
   )

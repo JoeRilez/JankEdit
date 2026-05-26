@@ -3,17 +3,27 @@ import TitleBar from './components/TitleBar'
 import FileTree from './components/FileTree'
 import EditorPane from './components/EditorPane'
 import TerminalPanel from './components/TerminalPanel'
+import NewProjectModal from './components/NewProjectModal'
 import { jankTheme } from './theme'
 import { lspClient } from './lsp/lspClient'
 
 export default function App() {
   const [openFiles, setOpenFiles]   = useState([])
   const [activeIdx, setActiveIdx]   = useState(0)
-  const [termVisible, setTermVisible] = useState(false)
-  const [openFolder, setOpenFolder]   = useState(null)
+  const [termVisible,     setTermVisible]     = useState(false)
+  const [openFolder,      setOpenFolder]      = useState(null)
+  const [showNewProject,  setShowNewProject]  = useState(false)
   const TERM_HEIGHT = 240
 
   const activeFile = openFiles[activeIdx] ?? null
+
+  const handleProjectCreated = useCallback(({ projectPath, mainFile, mainFileName }) => {
+    setShowNewProject(false)
+    setOpenFolder(projectPath)
+    if (mainFile && mainFileName) {
+      openFile({ path: mainFile, name: mainFileName })
+    }
+  }, [openFile])
 
   const openFile = useCallback(async (entry) => {
     const existing = openFiles.findIndex(f => f.path === entry.path)
@@ -59,7 +69,13 @@ export default function App() {
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: jankTheme.bg }}>
-      <TitleBar title={activeFile?.name} />
+      <TitleBar title={activeFile?.name} onNewProject={() => setShowNewProject(true)} />
+      {showNewProject && (
+        <NewProjectModal
+          onClose={() => setShowNewProject(false)}
+          onCreated={handleProjectCreated}
+        />
+      )}
 
       {openFiles.length > 0 && (
         <div style={{
@@ -109,7 +125,7 @@ export default function App() {
       )}
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <FileTree onFileOpen={openFile} onFolderOpen={setOpenFolder} />
+        <FileTree onFileOpen={openFile} onFolderOpen={setOpenFolder} externalFolder={openFolder} />
         <EditorPane file={activeFile} content={activeFile?.content} onChange={handleChange} />
       </div>
 

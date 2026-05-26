@@ -108,6 +108,26 @@ ipcMain.on('terminal:kill', () => {
   termProcess = null
 })
 
+const PROJECT_TEMPLATES = {
+  python: { file: 'main.py',   code: 'def main():\n    print("Hello from JankEdit!")\n\n\nif __name__ == "__main__":\n    main()\n' },
+  c:      { file: 'main.c',    code: '#include <stdio.h>\n\nint main() {\n    printf("Hello from JankEdit!\\n");\n    return 0;\n}\n' },
+  cpp:    { file: 'main.cpp',  code: '#include <iostream>\n\nint main() {\n    std::cout << "Hello from JankEdit!" << std::endl;\n    return 0;\n}\n' },
+  java:   { file: 'Main.java', code: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from JankEdit!");\n    }\n}\n' },
+  kotlin: { file: 'Main.kt',   code: 'fun main() {\n    println("Hello from JankEdit!")\n}\n' },
+}
+
+ipcMain.handle('create-project', async (_e, { name, location, language }) => {
+  try {
+    const projectPath = path.join(location, name)
+    fs.mkdirSync(projectPath, { recursive: true })
+    const tmpl = PROJECT_TEMPLATES[language]
+    if (tmpl) fs.writeFileSync(path.join(projectPath, tmpl.file), tmpl.code, 'utf-8')
+    return { projectPath, mainFile: tmpl ? path.join(projectPath, tmpl.file) : null, mainFileName: tmpl?.file }
+  } catch (err) {
+    return { error: err.message }
+  }
+})
+
 ipcMain.handle('lsp:request', async (_e, langId, method, params) => {
   return lspManager.request(langId, method, params)
 })
