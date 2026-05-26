@@ -17,6 +17,26 @@ export default function App() {
 
   const activeFile = openFiles[activeIdx] ?? null
 
+  const RUN_COMMANDS = {
+    py:   (f, d, n) => `cd "${d}"; python "${n}"\r\n`,
+    c:    (f, d, n) => `cd "${d}"; gcc "${n}" -o _out && ./_out\r\n`,
+    cpp:  (f, d, n) => `cd "${d}"; g++ "${n}" -o _out && ./_out\r\n`,
+    java: (f, d, n) => { const cls = n.replace('.java',''); return `cd "${d}"; javac "${n}" && java ${cls}\r\n` },
+    kt:   (f, d, n) => { const j = n.replace('.kt',''); return `cd "${d}"; kotlinc "${n}" -include-runtime -d ${j}.jar && java -jar ${j}.jar\r\n` },
+  }
+
+  const runActiveFile = useCallback(() => {
+    if (!activeFile) return
+    const ext = activeFile.name.split('.').pop().toLowerCase()
+    const cmd = RUN_COMMANDS[ext]
+    if (!cmd) return
+    const dir = activeFile.path.replace(/[\\/][^\\/]+$/, '')
+    setTermVisible(true)
+    setTimeout(() => window.api.terminalWrite(cmd(activeFile.path, dir, activeFile.name)), 100)
+  }, [activeFile])
+
+  const canRun = activeFile && ['py','c','cpp','java','kt'].includes(activeFile.name.split('.').pop().toLowerCase())
+
   const handleProjectCreated = useCallback(({ projectPath, mainFile, mainFileName }) => {
     setShowNewProject(false)
     setOpenFolder(projectPath)
@@ -62,6 +82,7 @@ export default function App() {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveFile() }
       if ((e.ctrlKey || e.metaKey) && e.key === '`') { e.preventDefault(); setTermVisible(v => !v) }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'r') { e.preventDefault(); runActiveFile() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -69,7 +90,12 @@ export default function App() {
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: jankTheme.bg }}>
-      <TitleBar title={activeFile?.name} onNewProject={() => setShowNewProject(true)} />
+      <TitleBar
+        title={activeFile?.name}
+        onNewProject={() => setShowNewProject(true)}
+        onRun={runActiveFile}
+        canRun={canRun}
+      />
       {showNewProject && (
         <NewProjectModal
           onClose={() => setShowNewProject(false)}

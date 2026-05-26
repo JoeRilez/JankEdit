@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const lspManager = require('./lsp/lspManager')
@@ -57,6 +57,26 @@ ipcMain.handle('write-file', async (_e, filePath, content) => {
   } catch (err) {
     return { error: err.message }
   }
+})
+
+ipcMain.handle('fs:new-file', async (_e, filePath) => {
+  try { fs.writeFileSync(filePath, '', 'utf-8'); return { success: true } }
+  catch (err) { return { error: err.message } }
+})
+
+ipcMain.handle('fs:new-folder', async (_e, folderPath) => {
+  try { fs.mkdirSync(folderPath, { recursive: true }); return { success: true } }
+  catch (err) { return { error: err.message } }
+})
+
+ipcMain.handle('fs:rename', async (_e, oldPath, newPath) => {
+  try { fs.renameSync(oldPath, newPath); return { success: true } }
+  catch (err) { return { error: err.message } }
+})
+
+ipcMain.handle('fs:delete', async (_e, itemPath) => {
+  try { await shell.trashItem(itemPath); return { success: true } }
+  catch (err) { return { error: err.message } }
 })
 
 ipcMain.handle('open-folder-dialog', async () => {
