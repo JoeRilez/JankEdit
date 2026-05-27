@@ -1,6 +1,8 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const os = require('os')
+const { execFile, spawn } = require('child_process')
 const lspManager = require('./lsp/lspManager')
 
 const isDev = !app.isPackaged
@@ -11,6 +13,7 @@ function createWindow() {
     height: 800,
     frame: false,
     backgroundColor: '#FFFAF5',
+    icon: path.join(app.getAppPath(), 'assets', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -149,6 +152,60 @@ ipcMain.handle('create-project', async (_e, { name, location, language }) => {
   }
 })
 
+// ── Git ──────────────────────────────────────────────────────────────────────
+
+function runGit(args, cwd) {
+  return new Promise((resolve, reject) => {
+    execFile('git', args, { cwd, timeout: 8000 }, (err, stdout, stderr) => {
+      if (err) reject(new Error(stderr?.trim() || err.message))
+      else resolve(stdout.trim())
+    })
+  })
+}
+
+ipcMain.handle('git:is-repo', async (_e, dir) => {
+  try { await runGit(['rev-parse', '--git-dir'], dir); return true }
+  catch { return false }
+})
+
+ipcMain.handle('git:branch', async (_e, dir) => {
+  try { return { ok: true, branch: await runGit(['rev-parse', '--abbrev-ref', 'HEAD'], dir) } }
+  catch (err) { return { ok: false, error: err.message } }
+})
+
+ipcMain.handle('git:status', async (_e, dir) => {
+  try {
+    const out = await runGit(['status', '--porcelain'], dir)
+    const files = out.split('\n').filter(Boolean).map(line => ({
+      xy:   line.substring(0, 2),
+      file: line.substring(3).trim(),
+    }))
+    return { ok: true, files }
+  } catch (err) { return { ok: false, error: err.message } }
+})
+
+ipcMain.handle('git:add', async (_e, dir, files) => {
+  try { await runGit(['add', '--', ...files], dir); return { ok: true } }
+  catch (err) { return { ok: false, error: err.message } }
+})
+
+ipcMain.handle('git:unstage', async (_e, dir, files) => {
+  try { await runGit(['restore', '--staged', '--', ...files], dir); return { ok: true } }
+  catch (err) { return { ok: false, error: err.message } }
+})
+
+ipcMain.handle('git:commit', async (_e, dir, message) => {
+  try { await runGit(['commit', '-m', message], dir); return { ok: true } }
+  catch (err) { return { ok: false, error: err.message } }
+})
+
+ipcMain.handle('git:log', async (_e, dir) => {
+  try { return { ok: true, lines: (await runGit(['log', '--oneline', '-20'], dir)).split('\n').filter(Boolean) } }
+  catch (err) { return { ok: false, error: err.message } }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 ipcMain.handle('lsp:request', async (_e, langId, method, params) => {
   return lspManager.request(langId, method, params)
 })
@@ -156,6 +213,102 @@ ipcMain.handle('lsp:request', async (_e, langId, method, params) => {
 ipcMain.on('lsp:notify', (_e, langId, method, params) => {
   lspManager.notify(langId, method, params)
 })
+
+// ── Embedded Simulator ───────────────────────────────────────────────────────
+const DEVICES = {
+  'arduino-uno': {
+    name: 'Arduino Uno',
+    mcu: 'atmega328p', fcpu: 16000000,
+    compiler: 'avr-gcc',
+    compileArgs: (src, out) => ['-mmcu=atmega328p', '-DF_CPU=16000000UL', '-Os', '-Wall', '-o', out, src],
+    simulator: 'simavr',
+    simArgs: (elf) => ['-m', 'atmega328p', '--freq', '16000000', elf],
+    pins: { digital: 14, analog: 6, label: 'D' },
+  },
+  'arduino-mega': {
+    name: 'Arduino Mega',
+    mcu: 'atmega2560', fcpu: 16000000,
+    compiler: 'avr-gcc',
+    compileArgs: (src, out) => ['-mmcu=atmega2560', '-DF_CPU=16000000UL', '-Os', '-Wall', '-o', out, src],
+    simulator: 'simavr',
+    simArgs: (elf) => ['-m', 'atmega2560', '--freq', '16000000', elf],
+    pins: { digital: 54, analog: 16, label: 'D' },
+  },
+  'stm32f4': {
+    name: 'STM32F4',
+    mcu: 'cortex-m4',
+    compiler: 'arm-none-eabi-gcc',
+    compileArgs: (src, out) => ['-mcpu=cortex-m4', '-mthumb', '-Os', '-Wall', '-specs=nosys.specs', '-o', out, src],
+    simulator: 'qemu-system-arm',
+    simArgs: (elf) => ['-M', 'netduinoplus2', '-kernel', elf, '-serial', 'stdio', '-nographic', '-monitor', 'none'],
+    pins: { digital: 16, analog: 4, label: 'PA' },
+  },
+  'stm32f1': {
+    name: 'STM32F1 (Blue Pill)',
+    mcu: 'cortex-m3',
+    compiler: 'arm-none-eabi-gcc',
+    compileArgs: (src, out) => ['-mcpu=cortex-m3', '-mthumb', '-Os', '-Wall', '-specs=nosys.specs', '-o', out, src],
+    simulator: 'qemu-system-arm',
+    simArgs: (elf) => ['-M', 'stm32-p103', '-kernel', elf, '-serial', 'stdio', '-nographic', '-monitor', 'none'],
+    pins: { digital: 16, analog: 2, label: 'PA' },
+  },
+}
+
+function cmdExists(cmd) {
+  return new Promise(resolve => {
+    execFile(process.platform === 'win32' ? 'where' : 'which', [cmd], err => resolve(!err))
+  })
+}
+
+let simProcess  = null
+let simSender   = null
+
+ipcMain.handle('sim:get-devices', () =>
+  Object.entries(DEVICES).map(([id, d]) => ({ id, name: d.name }))
+)
+
+ipcMain.handle('sim:check-toolchain', async (_e, deviceId) => {
+  const dev = DEVICES[deviceId]
+  if (!dev) return { compiler: false, simulator: false }
+  const [compiler, simulator] = await Promise.all([cmdExists(dev.compiler), cmdExists(dev.simulator)])
+  return { compiler, simulator }
+})
+
+ipcMain.handle('sim:compile', (_e, { deviceId, filePath }) => {
+  const dev = DEVICES[deviceId]
+  if (!dev) return { ok: false, error: 'Unknown device' }
+  const outFile = path.join(os.tmpdir(), 'jankedit_sim.elf')
+  const args = dev.compileArgs(filePath, outFile)
+  return new Promise(resolve => {
+    execFile(dev.compiler, args, { timeout: 30000 }, (err, _stdout, stderr) => {
+      if (err) resolve({ ok: false, error: stderr?.trim() || err.message })
+      else resolve({ ok: true, elfPath: outFile })
+    })
+  })
+})
+
+ipcMain.handle('sim:start', (event, { deviceId, elfPath }) => {
+  if (simProcess) { try { simProcess.kill() } catch {} }
+  const dev = DEVICES[deviceId]
+  if (!dev) return false
+  simSender = event.sender
+  simProcess = spawn(dev.simulator, dev.simArgs(elfPath), { stdio: ['pipe', 'pipe', 'pipe'] })
+  simProcess.stdout.on('data', d => event.sender.send('sim:serial', d.toString()))
+  simProcess.stderr.on('data', d => {
+    const txt = d.toString()
+    event.sender.send('sim:serial', txt)
+    // Parse simavr GPIO output: "PORTB[5] = 1" or similar
+    const m = txt.match(/PORT([A-Z])\[(\d+)\]\s*=\s*(\d)/i)
+    if (m) event.sender.send('sim:gpio', { port: m[1].toUpperCase(), pin: parseInt(m[2]), value: parseInt(m[3]) })
+  })
+  simProcess.on('exit', code => { simProcess = null; event.sender.send('sim:exit', code) })
+  return true
+})
+
+ipcMain.on('sim:stop', () => { try { simProcess?.kill() } catch {}; simProcess = null })
+ipcMain.on('sim:write', (_e, data) => simProcess?.stdin?.write(data))
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.whenReady().then(createWindow)
 app.on('before-quit', () => lspManager.stopAll())

@@ -1,5 +1,6 @@
 import React from 'react'
 import { jankTheme } from '../theme'
+import turtleIcon from '../assets/icon.png'
 
 export default function TitleBar({ title, onNewProject, onRun, canRun, onSettings }) {
   return (
@@ -15,7 +16,12 @@ export default function TitleBar({ title, onNewProject, onRun, canRun, onSetting
       userSelect: 'none',
       flexShrink: 0,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <img
+          src={turtleIcon}
+          alt="JankEdit"
+          style={{ width: 26, height: 26, imageRendering: 'pixelated' }}
+        />
         <span style={{
           fontWeight: 800,
           fontSize: 10,

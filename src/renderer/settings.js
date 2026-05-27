@@ -4,6 +4,7 @@ export const DEFAULTS = {
   wordWrap:  false,
   minimap:    true,
   lineNumbers: true,
+  autoSave:   true,
 }
 
 export function loadSettings() {

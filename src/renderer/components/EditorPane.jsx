@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react'
 import Editor from '@monaco-editor/react'
 import { jankTheme, monacoTheme } from '../theme'
 import { lspClient } from '../lsp/lspClient'
+import turtleIcon from '../assets/icon.png'
 
 const LANG_MAP = {
   c: 'c', h: 'cpp', cpp: 'cpp', hpp: 'cpp', cc: 'cpp',
@@ -15,7 +16,7 @@ function getLanguage(filePath) {
   return LANG_MAP[ext] ?? 'plaintext'
 }
 
-export default function EditorPane({ file, content, onChange, settings }) {
+export default function EditorPane({ file, content, onChange, settings, navTarget }) {
   const editorRef = useRef(null)
 
   const handleMount = (editor, monaco) => {
@@ -43,6 +44,18 @@ export default function EditorPane({ file, content, onChange, settings }) {
     }
   }, [file?.path])
 
+  useEffect(() => {
+    if (!navTarget || !editorRef.current) return
+    const timer = setTimeout(() => {
+      const ed = editorRef.current
+      if (!ed) return
+      ed.setPosition({ lineNumber: navTarget.line, column: navTarget.column })
+      ed.revealLineInCenter(navTarget.line)
+      ed.focus()
+    }, 50)
+    return () => clearTimeout(timer)
+  }, [navTarget])
+
   if (!file) {
     return (
       <div style={{
@@ -54,7 +67,7 @@ export default function EditorPane({ file, content, onChange, settings }) {
         flexDirection: 'column',
         gap: 12,
       }}>
-        <span style={{ fontSize: 24, fontWeight: 900, color: jankTheme.border }}>JE</span>
+        <img src={turtleIcon} alt="JankEdit" style={{ width: 64, height: 64, imageRendering: 'pixelated', opacity: 0.25 }} />
         <span style={{ color: jankTheme.textMuted, fontSize: 8, lineHeight: 2, textAlign: 'center' }}>Open a file to{'\n'}start editing</span>
       </div>
     )

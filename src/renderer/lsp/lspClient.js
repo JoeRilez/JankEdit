@@ -19,6 +19,13 @@ class LspClient {
     this._openDocs = new Map()   // uri -> { version, langId }
     this._disposables = []
     this._initialized = false
+    this._diagListeners = []
+  }
+
+  // Subscribe to diagnostic updates. Returns an unsubscribe fn.
+  onDiagnosticsChange(cb) {
+    this._diagListeners.push(cb)
+    return () => { this._diagListeners = this._diagListeners.filter(l => l !== cb) }
   }
 
   init(monacoInstance) {
@@ -116,6 +123,7 @@ class LspClient {
     }))
 
     this._monaco.editor.setModelMarkers(model, 'lsp', markers)
+    this._diagListeners.forEach(cb => cb(uri, diagnostics))
   }
 
   openDocument(filePath, content) {

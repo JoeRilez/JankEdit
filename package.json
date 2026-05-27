@@ -1,13 +1,48 @@
 {
   "name": "jankedit",
-  "version": "0.1.0",
+  "version": "1.4.0",
   "description": "JankEdit - My Personal IDE",
   "main": "src/main.js",
   "scripts": {
     "dev:vite": "vite",
     "dev:electron": "wait-on http://localhost:5173 && node node_modules/electron/dist/electron.exe .",
     "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
-    "build": "vite build"
+    "build:renderer": "vite build",
+    "build:app": "electron-builder --win",
+    "build": "npm run build:renderer && npm run build:app"
+  },
+  "build": {
+    "appId": "com.joerilez.jankedit",
+    "productName": "JankEdit",
+    "icon": "assets/icon.ico",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "src/main.js",
+      "src/preload.js",
+      "src/lsp/lspManager.js",
+      "assets/icon.ico"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "JankEdit"
+    }
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
@@ -20,6 +55,8 @@
     "@vitejs/plugin-react": "^4.4.1",
     "concurrently": "^9.1.2",
     "electron": "^33.4.11",
+    "electron-builder": "^26.8.1",
+    "png-to-ico": "^3.0.1",
     "vite": "^5.4.11",
     "wait-on": "^8.0.3"
   }

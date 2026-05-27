@@ -74,6 +74,11 @@ export default function SettingsModal({ settings, onClose, onChange }) {
           <Row label="Line Numbers">
             <Toggle value={local.lineNumbers} onChange={v => set('lineNumbers', v)} />
           </Row>
+
+          {/* Auto Save */}
+          <Row label="Auto Save" value="1s delay">
+            <Toggle value={local.autoSave} onChange={v => set('autoSave', v)} />
+          </Row>
         </Section>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 28 }}>

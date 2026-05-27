@@ -30,9 +30,14 @@ function InlineInput({ defaultValue, onCommit, onCancel }) {
   )
 }
 
+const GIT_COLORS = { M: '#E8A030', A: '#7AB648', '?': '#7AB648', D: '#C45A1A', R: '#A07850', C: '#A07850' }
+
 // ── Single file / folder row ─────────────────────────────────────────────────
 function FileEntry({ entry, depth }) {
-  const { onFileOpen, renaming, setRenaming, creating, setCreating, refresh } = useContext(TreeCtx)
+  const { onFileOpen, renaming, setRenaming, creating, setCreating, refresh, gitStatuses } = useContext(TreeCtx)
+  const gitCode  = gitStatuses?.[entry.path]
+  const gitColor = gitCode ? (GIT_COLORS[gitCode] ?? jankTheme.textMuted) : null
+  const gitLabel = gitCode === '?' ? 'U' : gitCode
   const [open, setOpen]         = useState(false)
   const [children, setChildren] = useState([])
   const [menu, setMenu]         = useState(null)
@@ -114,9 +119,16 @@ function FileEntry({ entry, depth }) {
             onCancel={() => setRenaming(null)}
           />
         ) : (
-          <span style={{ color: entry.isDirectory ? jankTheme.accent : jankTheme.text }}>
-            {entry.name}
-          </span>
+          <>
+            <span style={{ color: entry.isDirectory ? jankTheme.accent : jankTheme.text, flex: 1 }}>
+              {entry.name}
+            </span>
+            {gitColor && (
+              <span style={{ color: gitColor, fontSize: 6, fontWeight: 700, flexShrink: 0 }} title={gitCode}>
+                {gitLabel}
+              </span>
+            )}
+          </>
         )}
       </div>
 
@@ -163,7 +175,7 @@ function GhostInput({ depth, type, parentPath }) {
 }
 
 // ── Root FileTree ─────────────────────────────────────────────────────────────
-export default function FileTree({ onFileOpen, onFolderOpen, externalFolder }) {
+export default function FileTree({ onFileOpen, onFolderOpen, externalFolder, gitStatuses, width }) {
   const [entries,  setEntries]  = useState([])
   const [rootPath, setRootPath] = useState(null)
   const [renaming, setRenaming] = useState(null)
@@ -209,9 +221,9 @@ export default function FileTree({ onFileOpen, onFolderOpen, externalFolder }) {
   }
 
   return (
-    <TreeCtx.Provider value={{ onFileOpen, renaming, setRenaming, creating, setCreating, refresh }}>
+    <TreeCtx.Provider value={{ onFileOpen, renaming, setRenaming, creating, setCreating, refresh, gitStatuses }}>
       <div style={{
-        width: 220, background: jankTheme.bgSidebar,
+        width: width ?? 220, background: jankTheme.bgSidebar,
         borderRight: `1px solid ${jankTheme.border}`,
         overflowY: 'auto', flexShrink: 0,
         display: 'flex', flexDirection: 'column',
