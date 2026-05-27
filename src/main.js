@@ -158,6 +158,23 @@ ipcMain.on('terminal:kill', () => {
   termProcess = null
 })
 
+// ── Run panel (clean output, no interactive terminal) ─────────────────────────
+let runProcess = null
+
+ipcMain.handle('run:start', (event, { cmd, args, cwd }) => {
+  if (runProcess) { try { runProcess.kill() } catch {} }
+  const env = { ...process.env, PATH: getFreshWindowsPath() || process.env.PATH }
+  runProcess = spawn(cmd, args, { cwd, env })
+  runProcess.stdout.on('data', d => event.sender.send('run:output', { text: d.toString(), isErr: false }))
+  runProcess.stderr.on('data', d => event.sender.send('run:output', { text: d.toString(), isErr: true }))
+  runProcess.on('exit', code => { runProcess = null; event.sender.send('run:exit', code ?? 0) })
+  return true
+})
+
+ipcMain.on('run:stop', () => {
+  try { if (runProcess) { runProcess.kill(); runProcess = null } } catch {}
+})
+
 const PROJECT_TEMPLATES = {
   python: { file: 'main.py',   code: 'def main():\n    print("Hello from JankEdit!")\n\n\nif __name__ == "__main__":\n    main()\n' },
   c:      { file: 'main.c',    code: '#include <stdio.h>\n\nint main() {\n    printf("Hello from JankEdit!\\n");\n    return 0;\n}\n' },

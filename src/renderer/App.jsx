@@ -10,6 +10,7 @@ import PackagePanel from './components/PackagePanel'
 import NewProjectModal from './components/NewProjectModal'
 import SettingsModal from './components/SettingsModal'
 import QuickOpen from './components/QuickOpen'
+import OutputPanel from './components/OutputPanel'
 import { jankTheme } from './theme'
 import { lspClient } from './lsp/lspClient'
 import { loadSettings } from './settings'
@@ -42,6 +43,10 @@ export default function App() {
   const [pkgMounted,     setPkgMounted]     = useState(false)
   const [pkgHeight,      setPkgHeight]      = useState(280)
   const [quickOpen,      setQuickOpen]      = useState(false)
+  const [outVisible,     setOutVisible]     = useState(false)
+  const [outMounted,     setOutMounted]     = useState(false)
+  const [outHeight,      setOutHeight]      = useState(220)
+  const [runningFile,    setRunningFile]    = useState(null)
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const activeFile = openFiles[activeIdx] ?? null
@@ -83,25 +88,29 @@ export default function App() {
   }, [])
 
   // ── Run commands ─────────────────────────────────────────────────────────────
-  const RUN_COMMANDS = {
-    py:   (f, d, n) => `cd "${d}"; python "${n}"\r\n`,
-    c:    (f, d, n) => `cd "${d}"; gcc "${n}" -o _out && ./_out\r\n`,
-    cpp:  (f, d, n) => `cd "${d}"; g++ "${n}" -o _out && ./_out\r\n`,
-    java: (f, d, n) => { const cls = n.replace('.java', ''); return `cd "${d}"; javac "${n}" && java ${cls}\r\n` },
-    kt:   (f, d, n) => { const j = n.replace('.kt', ''); return `cd "${d}"; kotlinc "${n}" -include-runtime -d ${j}.jar && java -jar ${j}.jar\r\n` },
+  const RUN_CONFIGS = {
+    py:  (f, d)    => ({ cmd: 'py',          args: [f],                                        cwd: d }),
+    js:  (f, d)    => ({ cmd: 'node',         args: [f],                                        cwd: d }),
+    ts:  (f, d)    => ({ cmd: 'npx',          args: ['ts-node', f],                             cwd: d }),
+    c:   (f, d, n) => ({ cmd: 'powershell',   args: ['-NoProfile', '-Command', `gcc "${n}" -o _jout.exe; if ($?) { & './_jout.exe' }`], cwd: d }),
+    cpp: (f, d, n) => ({ cmd: 'powershell',   args: ['-NoProfile', '-Command', `g++ "${n}" -o _jout.exe; if ($?) { & './_jout.exe' }`], cwd: d }),
+    java:(f, d, n) => ({ cmd: 'powershell',   args: ['-NoProfile', '-Command', `javac "${n}"; if ($?) { java '${n.replace('.java','')}' }`], cwd: d }),
   }
 
   const runActiveFile = useCallback(() => {
     if (!activeFile) return
     const ext = activeFile.name.split('.').pop().toLowerCase()
-    const cmd = RUN_COMMANDS[ext]
-    if (!cmd) return
+    const cfg = RUN_CONFIGS[ext]
+    if (!cfg) return
     const dir = activeFile.path.replace(/[\\/][^\\/]+$/, '')
-    setTermMounted(true); setTermVisible(true)
-    setTimeout(() => window.api.terminalWrite(cmd(activeFile.path, dir, activeFile.name)), 300)
+    const config = cfg(activeFile.path, dir, activeFile.name)
+    setOutMounted(true)
+    setOutVisible(true)
+    setRunningFile(activeFile.name)
+    window.api.runStart(config)
   }, [activeFile])
 
-  const canRun = activeFile && ['py', 'c', 'cpp', 'java', 'kt'].includes(
+  const canRun = activeFile && Object.keys(RUN_CONFIGS).includes(
     activeFile.name.split('.').pop().toLowerCase()
   )
 
@@ -481,6 +490,22 @@ export default function App() {
         </>
       )}
 
+      {outMounted && (
+        <>
+          {outVisible && <PanelHandle onDelta={dy => setOutHeight(h => Math.max(80, h - dy))} />}
+          <OutputPanel
+            visible={outVisible}
+            height={outHeight}
+            runningFile={runningFile}
+            onToggle={() => setOutVisible(v => !v)}
+            onInstall={mod => {
+              setTermMounted(true); setTermVisible(true)
+              setTimeout(() => window.api.terminalWrite(`py -m pip install ${mod}\r`), 300)
+            }}
+          />
+        </>
+      )}
+
       {termMounted && (
         <>
           {termVisible && <PanelHandle onDelta={dy => setTermHeight(h => Math.max(80, h - dy))} />}
@@ -528,6 +553,7 @@ export default function App() {
           <StatusBtn active={simVisible}   title="Toggle Simulator"         onClick={toggleSim}>sim</StatusBtn>
           <StatusBtn active={pkgVisible}   title="Toggle Package Manager"   onClick={togglePkg}>pkg</StatusBtn>
           <StatusBtn active={gitVisible}   title="Toggle Git panel"         onClick={toggleGit}>git</StatusBtn>
+          <StatusBtn active={outVisible}   title="Toggle Output panel"      onClick={() => { setOutMounted(true); setOutVisible(v => !v) }}>out</StatusBtn>
           <StatusBtn active={termVisible}  title="Toggle Terminal (Ctrl+`)" onClick={toggleTerm}>&gt;_</StatusBtn>
         </div>
       </div>
