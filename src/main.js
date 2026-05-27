@@ -124,7 +124,12 @@ ipcMain.handle('terminal:start', (event, cwd) => {
   if (termProcess) { try { termProcess.kill() } catch {} }
 
   const freshPath = getFreshWindowsPath()
-  termProcess = pty.spawn('powershell.exe', ['-NoLogo', '-NoProfile'], {
+  termProcess = pty.spawn('powershell.exe', [
+    '-NoLogo', '-NoProfile', '-NoExit',
+    '-Command',
+    // Alias python → py so scripts that call python work regardless of PATH
+    'function python { py @args }; function python3 { py @args }; function pip { py -m pip @args }',
+  ], {
     name: 'xterm-256color',
     cols: 120,
     rows: 30,
