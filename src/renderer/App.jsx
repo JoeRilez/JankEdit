@@ -498,7 +498,7 @@ export default function App() {
         height: 30, background: jankTheme.accent, flexShrink: 0,
         display: 'flex', alignItems: 'center', padding: '0 12px', gap: 20,
       }}>
-        <span style={{ color: 'white', fontSize: 7, fontWeight: 700, letterSpacing: '0.05em' }}>JankEdit v1.6.2</span>
+        <span style={{ color: 'white', fontSize: 7, fontWeight: 700, letterSpacing: '0.05em' }}>JankEdit v1.6.3</span>
         {isGitRepo && gitBranch && (
           <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 6 }}>⎇ {gitBranch}</span>
         )}

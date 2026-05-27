@@ -1,6 +1,6 @@
 {
   "name": "jankedit",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "description": "JankEdit - My Personal IDE",
   "main": "src/main.js",
   "scripts": {

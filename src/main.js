@@ -102,15 +102,34 @@ ipcMain.handle('window-close', () => BrowserWindow.getFocusedWindow()?.close())
 const pty = require('node-pty')
 let termProcess = null
 
+// Read the current PATH from the Windows registry so that any `setx` changes
+// made after JankEdit launched are immediately visible in the terminal.
+function getFreshWindowsPath() {
+  try {
+    const { execSync } = require('child_process')
+    const readReg = key => {
+      try {
+        const out = execSync(`reg query "${key}" /v PATH`, { encoding: 'utf8' })
+        const line = out.split('\n').find(l => /PATH/i.test(l) && l.includes('    '))
+        return line ? line.trim().split(/\s{2,}/).pop() : ''
+      } catch { return '' }
+    }
+    const user   = readReg('HKCU\\Environment')
+    const system = readReg('HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment')
+    return [user, system].filter(Boolean).join(';')
+  } catch { return process.env.PATH }
+}
+
 ipcMain.handle('terminal:start', (event, cwd) => {
   if (termProcess) { try { termProcess.kill() } catch {} }
 
+  const freshPath = getFreshWindowsPath()
   termProcess = pty.spawn('powershell.exe', ['-NoLogo', '-NoProfile'], {
     name: 'xterm-256color',
     cols: 120,
     rows: 30,
     cwd: cwd || process.env.USERPROFILE || 'C:\\',
-    env: { ...process.env },
+    env: { ...process.env, PATH: freshPath || process.env.PATH },
   })
 
   termProcess.onData(d => event.sender.send('terminal:data', d))
@@ -375,7 +394,7 @@ ipcMain.handle('pkg:list', async (_e, { manager, rootPath }) => {
     }
     if (manager === 'pip') {
       const out = await new Promise((res, rej) =>
-        execFile('pip', ['list', '--format=json'], { timeout: 10000 }, (err, stdout, stderr) =>
+        execFile('py', ['-m', 'pip', 'list', '--format=json'], { timeout: 10000 }, (err, stdout, stderr) =>
           err ? rej(new Error(stderr || err.message)) : res(stdout)))
       return { ok: true, packages: JSON.parse(out).map(p => ({ name: p.name, version: p.version })) }
     }
@@ -405,7 +424,7 @@ ipcMain.handle('pkg:list', async (_e, { manager, rootPath }) => {
 ipcMain.handle('pkg:install', (event, { manager, packageName, rootPath, dev }) => {
   const cmds = {
     npm:     ['npm',         ['install', ...(dev ? ['--save-dev'] : ['--save']), packageName]],
-    pip:     ['pip',         ['install', packageName]],
+    pip:     ['py',          ['-m', 'pip', 'install', packageName]],
     vcpkg:   ['vcpkg',       ['install', packageName]],
     arduino: ['arduino-cli', ['lib', 'install', packageName]],
   }
@@ -419,7 +438,7 @@ ipcMain.handle('pkg:install', (event, { manager, packageName, rootPath, dev }) =
 ipcMain.handle('pkg:uninstall', (event, { manager, packageName, rootPath }) => {
   const cmds = {
     npm:     ['npm',         ['uninstall', packageName]],
-    pip:     ['pip',         ['uninstall', '-y', packageName]],
+    pip:     ['py',          ['-m', 'pip', 'uninstall', '-y', packageName]],
     vcpkg:   ['vcpkg',       ['remove', packageName]],
     arduino: ['arduino-cli', ['lib', 'uninstall', packageName]],
   }

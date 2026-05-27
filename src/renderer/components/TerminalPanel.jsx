@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
@@ -26,6 +26,18 @@ export default function TerminalPanel({ visible, height, workingDir, onToggle })
   const fitRef       = useRef(null)
   const startedRef   = useRef(false)
 
+  const [missingModule, setMissingModule] = useState(null)   // ModuleNotFoundError
+  const [hasReqs,       setHasReqs]       = useState(false)  // requirements.txt found
+
+  // Check for requirements.txt when folder changes
+  useEffect(() => {
+    setHasReqs(false)
+    if (!workingDir) return
+    window.api.readFile(workingDir + '\\requirements.txt').then(res => {
+      if (res && !res.error) setHasReqs(true)
+    })
+  }, [workingDir])
+
   useEffect(() => {
     const term = new Terminal({
       theme: TERM_THEME,
@@ -42,7 +54,12 @@ export default function TerminalPanel({ visible, height, workingDir, onToggle })
     termRef.current = term
     fitRef.current  = fit
 
-    window.api.onTerminalData(data => term.write(data))
+    window.api.onTerminalData(data => {
+      term.write(data)
+      // Detect missing Python module
+      const match = data.match(/ModuleNotFoundError: No module named '([^'.]+)/)
+      if (match) setMissingModule(match[1])
+    })
     window.api.onTerminalExit(() => {
       term.writeln('\r\n\x1b[33m[process exited — press any key to restart]\x1b[0m')
       startedRef.current = false
@@ -100,6 +117,11 @@ export default function TerminalPanel({ visible, height, workingDir, onToggle })
     }, 50)
   }, [visible, height])
 
+  const runCmd = cmd => {
+    window.api.terminalWrite(cmd + '\r')
+    termRef.current?.focus()
+  }
+
   return (
     <div style={{
       height:     visible ? height : 0,
@@ -146,12 +168,56 @@ export default function TerminalPanel({ visible, height, workingDir, onToggle })
         </div>
       </div>
 
+      {/* requirements.txt banner */}
+      {hasReqs && (
+        <NotifBar
+          icon="📦"
+          message="requirements.txt found"
+          action="Install all"
+          onAction={() => { runCmd('py -m pip install -r requirements.txt'); setHasReqs(false) }}
+          onDismiss={() => setHasReqs(false)}
+        />
+      )}
+
+      {/* Missing module banner */}
+      {missingModule && (
+        <NotifBar
+          icon="⚠"
+          message={`Missing module '${missingModule}'`}
+          action={`Install`}
+          onAction={() => { runCmd(`py -m pip install ${missingModule}`); setMissingModule(null) }}
+          onDismiss={() => setMissingModule(null)}
+        />
+      )}
+
       {/* xterm container */}
       <div
         ref={containerRef}
         onClick={() => termRef.current?.focus()}
         style={{ flex: 1, padding: '4px 8px', background: TERM_THEME.background }}
       />
+    </div>
+  )
+}
+
+function NotifBar({ icon, message, action, onAction, onDismiss }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '5px 12px', flexShrink: 0,
+      background: '#1A0E06', borderBottom: `1px solid ${jankTheme.border}`,
+    }}>
+      <span style={{ fontSize: 9 }}>{icon}</span>
+      <span style={{ fontSize: 6.5, color: jankTheme.text, flex: 1 }}>{message}</span>
+      <button onClick={onAction} style={{
+        padding: '3px 10px', fontSize: 6.5, cursor: 'pointer', fontFamily: 'inherit',
+        background: jankTheme.accent, color: 'white', border: 'none', borderRadius: 3,
+      }}>{action}</button>
+      <button onClick={onDismiss} style={{
+        padding: '3px 8px', fontSize: 6.5, cursor: 'pointer', fontFamily: 'inherit',
+        background: 'transparent', color: jankTheme.textMuted,
+        border: `1px solid ${jankTheme.border}`, borderRadius: 3,
+      }}>✕</button>
     </div>
   )
 }

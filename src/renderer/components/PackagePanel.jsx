@@ -16,7 +16,7 @@ const P = {
 // ── Manager meta ───────────────────────────────────────────────────────────────
 const MANAGERS = [
   { id: 'npm',     label: 'npm',     tool: 'npm',         icon: '⬡', color: '#CB3837' },
-  { id: 'pip',     label: 'pip',     tool: 'pip',         icon: '🐍', color: '#3572A5' },
+  { id: 'pip',     label: 'pip',     tool: 'py',          icon: '🐍', color: '#3572A5' },
   { id: 'arduino', label: 'Arduino', tool: 'arduino-cli', icon: '⚡', color: '#00878A' },
   { id: 'vcpkg',   label: 'vcpkg',   tool: 'vcpkg',       icon: '📦', color: '#5C4EE5' },
 ]
