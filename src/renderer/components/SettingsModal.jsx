@@ -1,9 +1,14 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { jankTheme } from '../theme'
 import { saveSettings, DEFAULTS } from '../settings'
 
 export default function SettingsModal({ settings, onClose, onChange }) {
-  const [local, setLocal] = useState({ ...settings })
+  const [local,   setLocal]   = useState({ ...settings })
+  const [servers, setServers] = useState(null)
+
+  useEffect(() => {
+    window.api.lspListServers().then(setServers)
+  }, [])
 
   const set = (key, value) => setLocal(s => ({ ...s, [key]: value }))
 
@@ -79,6 +84,32 @@ export default function SettingsModal({ settings, onClose, onChange }) {
           <Row label="Auto Save" value="1s delay">
             <Toggle value={local.autoSave} onChange={v => set('autoSave', v)} />
           </Row>
+        </Section>
+
+        <Section label="Language Servers (LSP)">
+          {servers === null && (
+            <span style={{ fontSize: 6.5, color: jankTheme.textMuted }}>Checking…</span>
+          )}
+          {servers && Object.entries(servers)
+            // Deduplicate by tool name (c+cpp both use clangd, js+ts both use tsls)
+            .filter(([id]) => !['cpp', 'typescript'].includes(id))
+            .map(([id, info]) => (
+              <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                  background: info.available ? '#7AB648' : jankTheme.border,
+                  boxShadow:  info.available ? '0 0 5px #7AB64888' : 'none',
+                }} />
+                <span style={{ fontSize: 7, color: jankTheme.text, width: 90 }}>{info.label}</span>
+                {info.available
+                  ? <span style={{ fontSize: 6, color: '#7AB648' }}>✓ ready</span>
+                  : <span style={{ fontSize: 6, color: jankTheme.textMuted, flex: 1, fontFamily: "'Cascadia Code', monospace" }}>
+                      {info.install}
+                    </span>
+                }
+              </div>
+            ))
+          }
         </Section>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 28 }}>

@@ -6,8 +6,10 @@ import TerminalPanel from './components/TerminalPanel'
 import GitPanel from './components/GitPanel'
 import DiagnosticsPanel from './components/DiagnosticsPanel'
 import SimulatorPanel from './components/SimulatorPanel'
+import PackagePanel from './components/PackagePanel'
 import NewProjectModal from './components/NewProjectModal'
 import SettingsModal from './components/SettingsModal'
+import QuickOpen from './components/QuickOpen'
 import { jankTheme } from './theme'
 import { lspClient } from './lsp/lspClient'
 import { loadSettings } from './settings'
@@ -36,6 +38,10 @@ export default function App() {
   const [navTarget,      setNavTarget]      = useState(null)
   const [simVisible,     setSimVisible]     = useState(false)
   const [simMounted,     setSimMounted]     = useState(false)
+  const [pkgVisible,     setPkgVisible]     = useState(false)
+  const [pkgMounted,     setPkgMounted]     = useState(false)
+  const [pkgHeight,      setPkgHeight]      = useState(280)
+  const [quickOpen,      setQuickOpen]      = useState(false)
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const activeFile = openFiles[activeIdx] ?? null
@@ -70,6 +76,10 @@ export default function App() {
 
   const toggleSim = useCallback(() => {
     setSimVisible(v => { if (!v) setSimMounted(true); return !v })
+  }, [])
+
+  const togglePkg = useCallback(() => {
+    setPkgVisible(v => { if (!v) setPkgMounted(true); return !v })
   }, [])
 
   // ── Run commands ─────────────────────────────────────────────────────────────
@@ -118,6 +128,9 @@ export default function App() {
   }, [openFolder])
 
   useEffect(() => { refreshGitStatus() }, [openFolder, refreshGitStatus])
+
+  // Tell LSP servers about the workspace root whenever the folder changes
+  useEffect(() => { if (openFolder) lspClient.setRoot(openFolder) }, [openFolder])
 
   // ── Auto-save ─────────────────────────────────────────────────────────────────
   const scheduleAutoSave = useCallback(() => {
@@ -178,16 +191,18 @@ export default function App() {
   const saveFile = useCallback(async () => {
     if (!activeFile?.dirty) return
     await window.api.writeFile(activeFile.path, activeFile.content)
+    lspClient.saveDocument(activeFile.path)
     setOpenFiles(prev => prev.map((f, i) => i === activeIdx ? { ...f, dirty: false } : f))
     refreshGitStatus()
   }, [activeFile, activeIdx, refreshGitStatus])
 
-  const closeTab = useCallback((idx, e) => {
-    e.stopPropagation()
+  const closeTab = useCallback((idx) => {
     setOpenFiles(prev => {
-      const closedPath = prev[idx].path
-      lspClient.closeDocument(closedPath)
-      if (rightFilePath === closedPath) setRightFilePath(null)
+      const file = prev[idx]
+      if (!file) return prev
+      if (file.dirty && !window.confirm(`${file.name} has unsaved changes. Close anyway?`)) return prev
+      lspClient.closeDocument(file.path)
+      if (rightFilePath === file.path) setRightFilePath(null)
       return prev.filter((_, i) => i !== idx)
     })
     setActiveIdx(prev => Math.max(0, prev >= idx ? prev - 1 : prev))
@@ -228,15 +243,44 @@ export default function App() {
   }, [openFiles])
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────────
+  const activeIdxRef = useRef(activeIdx)
+  useEffect(() => { activeIdxRef.current = activeIdx }, [activeIdx])
+  // openFilesRef is already defined above (used for auto-save too)
+
   useEffect(() => {
     const onKey = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveFile() }
-      if ((e.ctrlKey || e.metaKey) && e.key === '`') { e.preventDefault(); toggleTerm() }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'r') { e.preventDefault(); runActiveFile() }
+      const ctrl = e.ctrlKey || e.metaKey
+      if (ctrl && e.key === 's') { e.preventDefault(); saveFile() }
+      if (ctrl && e.key === '`') { e.preventDefault(); toggleTerm() }
+      if (ctrl && e.key === 'r') { e.preventDefault(); runActiveFile() }
+
+      // Close current tab
+      if (ctrl && e.key === 'w') {
+        e.preventDefault()
+        if (openFilesRef.current.length > 0) closeTab(activeIdxRef.current)
+      }
+
+      // Cycle tabs forward / backward
+      if (ctrl && !e.shiftKey && e.key === 'Tab') {
+        e.preventDefault()
+        const n = openFilesRef.current.length
+        if (n > 1) { setActiveIdx(prev => (prev + 1) % n); setFocusedPane('left') }
+      }
+      if (ctrl && e.shiftKey && e.key === 'Tab') {
+        e.preventDefault()
+        const n = openFilesRef.current.length
+        if (n > 1) { setActiveIdx(prev => (prev - 1 + n) % n); setFocusedPane('left') }
+      }
+
+      // Quick open
+      if (ctrl && e.key === 'p') {
+        e.preventDefault()
+        setQuickOpen(true)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [saveFile, toggleTerm, runActiveFile])
+  }, [saveFile, toggleTerm, runActiveFile, closeTab])
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -255,6 +299,13 @@ export default function App() {
       {showNewProject && (
         <NewProjectModal onClose={() => setShowNewProject(false)} onCreated={handleProjectCreated} />
       )}
+      {quickOpen && (
+        <QuickOpen
+          rootPath={openFolder}
+          onOpen={entry => { setQuickOpen(false); openFile(entry) }}
+          onClose={() => setQuickOpen(false)}
+        />
+      )}
 
       {/* Tab bar */}
       {openFiles.length > 0 && (
@@ -263,43 +314,53 @@ export default function App() {
           borderBottom: `1px solid ${jankTheme.border}`,
           overflowX: 'auto', flexShrink: 0,
         }}>
-          {openFiles.map((f, i) => (
-            <div
-              key={f.path}
-              onClick={() => { setActiveIdx(i); setFocusedPane('left') }}
-              style={{
-                padding: '8px 14px', cursor: 'pointer', fontSize: 7,
-                display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
-                borderRight: `1px solid ${jankTheme.border}`,
-                borderBottom: i === activeIdx && focusedPane === 'left'
-                  ? `2px solid ${jankTheme.accent}` : '2px solid transparent',
-                background: i === activeIdx && focusedPane === 'left' ? jankTheme.bgEditor : 'transparent',
-                color: i === activeIdx ? jankTheme.accent : jankTheme.text,
-                fontWeight: i === activeIdx ? 700 : 400,
-              }}
-            >
-              {f.name}{f.dirty ? ' *' : ''}
-              {/* Split button */}
-              <span
-                onClick={e => { e.stopPropagation(); setRightFilePath(f.path); setSplitActive(true); setFocusedPane('right') }}
-                title="Open in split pane"
-                style={{ color: jankTheme.textMuted, fontSize: 6, lineHeight: 1, padding: '0 2px' }}
-                onMouseEnter={e => e.currentTarget.style.color = jankTheme.accent}
-                onMouseLeave={e => e.currentTarget.style.color = jankTheme.textMuted}
+          {openFiles.map((f, i) => {
+            const isActive = i === activeIdx && focusedPane === 'left'
+            return (
+              <div
+                key={f.path}
+                onClick={() => { setActiveIdx(i); setFocusedPane('left') }}
+                onAuxClick={e => { if (e.button === 1) closeTab(i) }}
+                title={f.path}
+                style={{
+                  padding: '0 4px 0 12px', height: 33, cursor: 'pointer', fontSize: 7,
+                  display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
+                  borderRight: `1px solid ${jankTheme.border}`,
+                  borderBottom: isActive ? `2px solid ${jankTheme.accent}` : '2px solid transparent',
+                  background: isActive ? jankTheme.bgEditor : 'transparent',
+                  color: isActive ? jankTheme.accent : jankTheme.text,
+                  fontWeight: isActive ? 700 : 400,
+                  flexShrink: 0,
+                }}
               >
-                ⬚
-              </span>
-              {/* Close button */}
-              <span
-                onClick={e => closeTab(i, e)}
-                style={{ color: jankTheme.textMuted, fontSize: 7, lineHeight: 1, padding: '0 2px', borderRadius: 3 }}
-                onMouseEnter={e => e.currentTarget.style.color = jankTheme.accent}
-                onMouseLeave={e => e.currentTarget.style.color = jankTheme.textMuted}
-              >
-                x
-              </span>
-            </div>
-          ))}
+                {/* Dirty dot */}
+                {f.dirty
+                  ? <span style={{ color: jankTheme.accent, fontSize: 9, lineHeight: 1 }}>●</span>
+                  : <span style={{ width: 9, display: 'inline-block' }} />
+                }
+
+                {f.name}
+
+                {/* Split button */}
+                <span
+                  onClick={e => { e.stopPropagation(); setRightFilePath(f.path); setSplitActive(true); setFocusedPane('right') }}
+                  title="Open in split pane"
+                  style={{ color: jankTheme.textMuted, fontSize: 6, lineHeight: 1, padding: '0 2px', marginLeft: 2 }}
+                  onMouseEnter={e => e.currentTarget.style.color = jankTheme.accent}
+                  onMouseLeave={e => e.currentTarget.style.color = jankTheme.textMuted}
+                >⬚</span>
+
+                {/* Close button */}
+                <span
+                  onClick={e => { e.stopPropagation(); closeTab(i) }}
+                  title="Close (Ctrl+W)"
+                  style={{ color: jankTheme.textMuted, fontSize: 7, lineHeight: 1, padding: '2px 4px', borderRadius: 3 }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'white'; e.currentTarget.style.background = jankTheme.accent }}
+                  onMouseLeave={e => { e.currentTarget.style.color = jankTheme.textMuted; e.currentTarget.style.background = 'transparent' }}
+                >×</span>
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -408,6 +469,18 @@ export default function App() {
         </>
       )}
 
+      {pkgMounted && (
+        <>
+          {pkgVisible && <PanelHandle onDelta={dy => setPkgHeight(h => Math.max(80, h - dy))} />}
+          <PackagePanel
+            visible={pkgVisible}
+            height={pkgHeight}
+            rootPath={openFolder}
+            onToggle={togglePkg}
+          />
+        </>
+      )}
+
       {termMounted && (
         <>
           {termVisible && <PanelHandle onDelta={dy => setTermHeight(h => Math.max(80, h - dy))} />}
@@ -425,7 +498,7 @@ export default function App() {
         height: 30, background: jankTheme.accent, flexShrink: 0,
         display: 'flex', alignItems: 'center', padding: '0 12px', gap: 20,
       }}>
-        <span style={{ color: 'white', fontSize: 7, fontWeight: 700, letterSpacing: '0.05em' }}>JankEdit v1.1.0</span>
+        <span style={{ color: 'white', fontSize: 7, fontWeight: 700, letterSpacing: '0.05em' }}>JankEdit v1.6.2</span>
         {isGitRepo && gitBranch && (
           <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 6 }}>⎇ {gitBranch}</span>
         )}
@@ -453,6 +526,7 @@ export default function App() {
           )}
           <StatusBtn active={diagVisible}  title="Toggle Problems panel"    onClick={toggleDiag}>prb</StatusBtn>
           <StatusBtn active={simVisible}   title="Toggle Simulator"         onClick={toggleSim}>sim</StatusBtn>
+          <StatusBtn active={pkgVisible}   title="Toggle Package Manager"   onClick={togglePkg}>pkg</StatusBtn>
           <StatusBtn active={gitVisible}   title="Toggle Git panel"         onClick={toggleGit}>git</StatusBtn>
           <StatusBtn active={termVisible}  title="Toggle Terminal (Ctrl+`)" onClick={toggleTerm}>&gt;_</StatusBtn>
         </div>

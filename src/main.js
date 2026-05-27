@@ -99,32 +99,34 @@ ipcMain.handle('window-maximize', () => {
 })
 ipcMain.handle('window-close', () => BrowserWindow.getFocusedWindow()?.close())
 
+const pty = require('node-pty')
 let termProcess = null
 
 ipcMain.handle('terminal:start', (event, cwd) => {
   if (termProcess) { try { termProcess.kill() } catch {} }
 
-  termProcess = require('child_process').spawn(
-    'powershell.exe',
-    ['-NoLogo', '-NoProfile'],
-    {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      cwd: cwd || process.env.USERPROFILE || 'C:\\',
-      env: { ...process.env },
-    }
-  )
+  termProcess = pty.spawn('powershell.exe', ['-NoLogo', '-NoProfile'], {
+    name: 'xterm-256color',
+    cols: 120,
+    rows: 30,
+    cwd: cwd || process.env.USERPROFILE || 'C:\\',
+    env: { ...process.env },
+  })
 
-  termProcess.stdout.on('data', d => event.sender.send('terminal:data', d.toString()))
-  termProcess.stderr.on('data', d => event.sender.send('terminal:data', d.toString()))
-  termProcess.on('exit', code => {
+  termProcess.onData(d => event.sender.send('terminal:data', d))
+  termProcess.onExit(({ exitCode }) => {
     termProcess = null
-    event.sender.send('terminal:exit', code)
+    event.sender.send('terminal:exit', exitCode)
   })
   return true
 })
 
 ipcMain.on('terminal:write', (_e, data) => {
-  termProcess?.stdin.write(data)
+  termProcess?.write(data)
+})
+
+ipcMain.on('terminal:resize', (_e, cols, rows) => {
+  try { termProcess?.resize(cols, rows) } catch {}
 })
 
 ipcMain.on('terminal:kill', () => {
@@ -212,6 +214,21 @@ ipcMain.handle('lsp:request', async (_e, langId, method, params) => {
 
 ipcMain.on('lsp:notify', (_e, langId, method, params) => {
   lspManager.notify(langId, method, params)
+})
+
+ipcMain.handle('lsp:set-root', (_e, rootPath) => {
+  lspManager.setRoot(rootPath)
+})
+
+ipcMain.handle('lsp:list-servers', async () => {
+  const meta = lspManager.SERVER_META
+  const entries = await Promise.all(
+    Object.entries(meta).map(async ([langId, info]) => {
+      const available = await lspManager.cmdAvailable(info.tool)
+      return [langId, { ...info, available }]
+    })
+  )
+  return Object.fromEntries(entries)
 })
 
 // ── Embedded Simulator ───────────────────────────────────────────────────────
@@ -307,6 +324,140 @@ ipcMain.handle('sim:start', (event, { deviceId, elfPath }) => {
 
 ipcMain.on('sim:stop', () => { try { simProcess?.kill() } catch {}; simProcess = null })
 ipcMain.on('sim:write', (_e, data) => simProcess?.stdin?.write(data))
+
+// ── Package Manager ──────────────────────────────────────────────────────────
+
+// Spawn a package-manager command and stream stdout/stderr back as 'pkg:log'
+function spawnPkg(event, cmd, args, cwd) {
+  return new Promise(resolve => {
+    const proc = spawn(cmd, args, {
+      cwd: cwd || process.env.USERPROFILE || process.cwd(),
+      stdio: ['pipe', 'pipe', 'pipe'],
+      shell: true,
+    })
+    proc.stdout.on('data', d => event.sender.send('pkg:log', d.toString()))
+    proc.stderr.on('data', d => event.sender.send('pkg:log', d.toString()))
+    proc.on('exit',  code => { event.sender.send('pkg:log', `\n[done — exit ${code}]\n`); resolve({ ok: code === 0 }) })
+    proc.on('error', err  => { event.sender.send('pkg:log', `\n[error: ${err.message}]\n`); resolve({ ok: false, error: err.message }) })
+  })
+}
+
+// Detect which package managers apply to the open folder
+ipcMain.handle('pkg:detect', (_e, rootPath) => {
+  if (!rootPath) return {}
+  const has = name => { try { fs.accessSync(path.join(rootPath, name)); return true } catch { return false } }
+  let hasIno = false
+  try { hasIno = fs.readdirSync(rootPath).some(f => f.endsWith('.ino')) } catch {}
+  return {
+    npm:     has('package.json'),
+    pip:     has('requirements.txt') || has('pyproject.toml') || has('setup.py'),
+    vcpkg:   has('vcpkg.json'),
+    arduino: hasIno || has('sketch.yaml'),
+  }
+})
+
+// Check whether a CLI tool is on PATH
+ipcMain.handle('pkg:check-tool', (_e, tool) => cmdExists(tool))
+
+// List installed packages for a given manager
+ipcMain.handle('pkg:list', async (_e, { manager, rootPath }) => {
+  try {
+    if (manager === 'npm') {
+      return await new Promise(resolve => {
+        execFile('npm', ['list', '--depth=0', '--json'], { cwd: rootPath, timeout: 15000 }, (_err, stdout) => {
+          try {
+            const data = JSON.parse(stdout || '{}')
+            const deps = data.dependencies || {}
+            resolve({ ok: true, packages: Object.entries(deps).map(([name, info]) => ({ name, version: info.version || '' })) })
+          } catch { resolve({ ok: true, packages: [] }) }
+        })
+      })
+    }
+    if (manager === 'pip') {
+      const out = await new Promise((res, rej) =>
+        execFile('pip', ['list', '--format=json'], { timeout: 10000 }, (err, stdout, stderr) =>
+          err ? rej(new Error(stderr || err.message)) : res(stdout)))
+      return { ok: true, packages: JSON.parse(out).map(p => ({ name: p.name, version: p.version })) }
+    }
+    if (manager === 'vcpkg') {
+      const out = await new Promise((res, rej) =>
+        execFile('vcpkg', ['list'], { timeout: 10000 }, (err, stdout, stderr) =>
+          err ? rej(new Error(stderr || err.message)) : res(stdout)))
+      const packages = out.split('\n').filter(Boolean).map(line => {
+        const [pkg, ver] = line.trim().split(/\s+/)
+        return { name: (pkg || '').split(':')[0], version: ver || '' }
+      }).filter(p => p.name)
+      return { ok: true, packages }
+    }
+    if (manager === 'arduino') {
+      const out = await new Promise((res, rej) =>
+        execFile('arduino-cli', ['lib', 'list', '--format', 'json'], { timeout: 10000 }, (err, stdout, stderr) =>
+          err ? rej(new Error(stderr || err.message)) : res(stdout)))
+      const data = JSON.parse(out || '{}')
+      const libs = data.installed_libraries || []
+      return { ok: true, packages: libs.map(l => ({ name: l.library?.name || l.name, version: l.library?.version || '' })) }
+    }
+    return { ok: false, error: 'Unknown manager' }
+  } catch (err) { return { ok: false, error: err.message } }
+})
+
+// Install a package — streams progress, resolves when done
+ipcMain.handle('pkg:install', (event, { manager, packageName, rootPath, dev }) => {
+  const cmds = {
+    npm:     ['npm',         ['install', ...(dev ? ['--save-dev'] : ['--save']), packageName]],
+    pip:     ['pip',         ['install', packageName]],
+    vcpkg:   ['vcpkg',       ['install', packageName]],
+    arduino: ['arduino-cli', ['lib', 'install', packageName]],
+  }
+  const entry = cmds[manager]
+  if (!entry) return Promise.resolve({ ok: false, error: 'Unknown manager' })
+  event.sender.send('pkg:log', `> ${entry[0]} ${entry[1].join(' ')}\n`)
+  return spawnPkg(event, entry[0], entry[1], rootPath)
+})
+
+// Uninstall a package — streams progress
+ipcMain.handle('pkg:uninstall', (event, { manager, packageName, rootPath }) => {
+  const cmds = {
+    npm:     ['npm',         ['uninstall', packageName]],
+    pip:     ['pip',         ['uninstall', '-y', packageName]],
+    vcpkg:   ['vcpkg',       ['remove', packageName]],
+    arduino: ['arduino-cli', ['lib', 'uninstall', packageName]],
+  }
+  const entry = cmds[manager]
+  if (!entry) return Promise.resolve({ ok: false, error: 'Unknown manager' })
+  event.sender.send('pkg:log', `> ${entry[0]} ${entry[1].join(' ')}\n`)
+  return spawnPkg(event, entry[0], entry[1], rootPath)
+})
+
+// vcpkg search (run locally since there's no public REST API)
+ipcMain.handle('pkg:search-vcpkg', async (_e, query) => {
+  try {
+    const out = await new Promise((res, rej) =>
+      execFile('vcpkg', ['search', query], { timeout: 10000 }, (err, stdout, stderr) =>
+        err ? rej(new Error(stderr || err.message)) : res(stdout)))
+    const results = out.split('\n')
+      .filter(l => l.trim() && !l.startsWith('If') && !l.startsWith('The') && !l.startsWith('vcpkg'))
+      .map(l => {
+        const m = l.match(/^(\S+)\s+(\S+)\s+(.*)/)
+        return m ? { name: m[1].split(':')[0], version: m[2], description: m[3].trim() } : null
+      })
+      .filter(Boolean)
+      .slice(0, 20)
+    return { ok: true, results }
+  } catch (err) { return { ok: false, error: err.message } }
+})
+
+// arduino-cli library search
+ipcMain.handle('pkg:search-arduino', async (_e, query) => {
+  try {
+    const out = await new Promise((res, rej) =>
+      execFile('arduino-cli', ['lib', 'search', query, '--format', 'json'], { timeout: 15000 }, (err, stdout, stderr) =>
+        err ? rej(new Error(stderr || err.message)) : res(stdout)))
+    const data = JSON.parse(out || '{}')
+    const libs = (data.libraries || []).slice(0, 20)
+    return { ok: true, results: libs.map(l => ({ name: l.name, version: l.latest?.version || '', description: l.latest?.sentence || '' })) }
+  } catch (err) { return { ok: false, error: err.message } }
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 

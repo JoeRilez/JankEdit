@@ -1,11 +1,11 @@
 {
   "name": "jankedit",
-  "version": "1.4.0",
+  "version": "1.6.2",
   "description": "JankEdit - My Personal IDE",
   "main": "src/main.js",
   "scripts": {
     "dev:vite": "vite",
-    "dev:electron": "wait-on http://localhost:5173 && node node_modules/electron/dist/electron.exe .",
+    "dev:electron": "wait-on http://localhost:5173 && electron .",
     "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
     "build:renderer": "vite build",
     "build:app": "electron-builder --win",
@@ -23,8 +23,13 @@
       "src/main.js",
       "src/preload.js",
       "src/lsp/lspManager.js",
-      "assets/icon.ico"
+      "assets/icon.ico",
+      "node_modules/node-pty/**"
     ],
+    "asarUnpack": [
+      "node_modules/node-pty/**"
+    ],
+    "npmRebuild": false,
     "win": {
       "target": [
         {
@@ -46,6 +51,7 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
+    "node-pty": "^1.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "xterm": "^5.3.0",

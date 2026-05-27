@@ -48,6 +48,25 @@ export default function TerminalPanel({ visible, height, workingDir, onToggle })
       startedRef.current = false
     })
     term.onData(data => window.api.terminalWrite(data))
+    term.onResize(({ cols, rows }) => window.api.terminalResize(cols, rows))
+
+    // Ctrl+C → copy selection (if any), otherwise send SIGINT
+    // Ctrl+V → paste from clipboard
+    term.attachCustomKeyEventHandler(e => {
+      if (e.type !== 'keydown') return true
+      const ctrl = e.ctrlKey || e.metaKey
+      if (ctrl && e.key === 'c' && term.hasSelection()) {
+        navigator.clipboard.writeText(term.getSelection())
+        return false
+      }
+      if (ctrl && e.key === 'v') {
+        navigator.clipboard.readText().then(text => {
+          if (text) window.api.terminalWrite(text)
+        })
+        return false
+      }
+      return true
+    })
 
     return () => { term.dispose(); window.api.terminalKill() }
   }, [])
@@ -63,9 +82,22 @@ export default function TerminalPanel({ visible, height, workingDir, onToggle })
     })
   }, [visible, workingDir])
 
-  // Refit whenever the panel size changes
+  // Auto-cd when the open folder changes
+  const prevWorkingDirRef = useRef(null)
   useEffect(() => {
-    if (visible) setTimeout(() => fitRef.current?.fit(), 50)
+    if (!workingDir || workingDir === prevWorkingDirRef.current) return
+    prevWorkingDirRef.current = workingDir
+    if (startedRef.current) {
+      window.api.terminalWrite(`cd "${workingDir}"\r`)
+    }
+  }, [workingDir])
+
+  // Refit and refocus whenever the panel size changes or becomes visible
+  useEffect(() => {
+    if (visible) setTimeout(() => {
+      fitRef.current?.fit()
+      termRef.current?.focus()
+    }, 50)
   }, [visible, height])
 
   return (
@@ -117,6 +149,7 @@ export default function TerminalPanel({ visible, height, workingDir, onToggle })
       {/* xterm container */}
       <div
         ref={containerRef}
+        onClick={() => termRef.current?.focus()}
         style={{ flex: 1, padding: '4px 8px', background: TERM_THEME.background }}
       />
     </div>
