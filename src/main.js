@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const os = require('os')
-const { execFile, spawn } = require('child_process')
+const { execFile, execSync, spawn } = require('child_process')
 const lspManager = require('./lsp/lspManager')
 
 const isDev = !app.isPackaged
@@ -102,22 +102,34 @@ ipcMain.handle('window-close', () => BrowserWindow.getFocusedWindow()?.close())
 const pty = require('node-pty')
 let termProcess = null
 
-// Read the current PATH from the Windows registry so that any `setx` changes
-// made after JankEdit launched are immediately visible in the terminal.
+// Read the current PATH using PowerShell so environment variables like
+// %SystemRoot% are properly expanded and setx changes made after launch
+// are immediately visible in the terminal and run panel.
 function getFreshWindowsPath() {
   try {
-    const { execSync } = require('child_process')
-    const readReg = key => {
-      try {
-        const out = execSync(`reg query "${key}" /v PATH`, { encoding: 'utf8' })
-        const line = out.split('\n').find(l => /PATH/i.test(l) && l.includes('    '))
-        return line ? line.trim().split(/\s{2,}/).pop() : ''
-      } catch { return '' }
-    }
-    const user   = readReg('HKCU\\Environment')
-    const system = readReg('HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment')
-    return [user, system].filter(Boolean).join(';')
-  } catch { return process.env.PATH }
+    const out = execSync(
+      'powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable(\'PATH\',\'User\')+\';\'+[Environment]::GetEnvironmentVariable(\'PATH\',\'Machine\')"',
+      { encoding: 'utf8', timeout: 5000 }
+    ).trim()
+    return out || process.env.PATH
+  } catch {
+    return process.env.PATH
+  }
+}
+
+// Find the real python.exe, skipping the Windows Store stub.
+// Result is cached so we only run where.exe once per session.
+let _pythonExe = null
+function findPythonExe() {
+  if (_pythonExe) return _pythonExe
+  try {
+    const lines = execSync('where.exe python', { encoding: 'utf8', timeout: 5000 })
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l && l.endsWith('.exe') && !l.toLowerCase().includes('windowsapps'))
+    if (lines.length > 0) { _pythonExe = lines[0]; return _pythonExe }
+  } catch {}
+  return 'python' // last-resort fallback
 }
 
 ipcMain.handle('terminal:start', (event, cwd) => {
@@ -163,8 +175,9 @@ let runProcess = null
 
 ipcMain.handle('run:start', (event, { cmd, args, cwd }) => {
   if (runProcess) { try { runProcess.kill() } catch {} }
+  const resolvedCmd = (cmd === 'python') ? findPythonExe() : cmd
   const env = { ...process.env, PATH: getFreshWindowsPath() || process.env.PATH }
-  runProcess = spawn(cmd, args, { cwd, env })
+  runProcess = spawn(resolvedCmd, args, { cwd, env })
   runProcess.stdout.on('data', d => event.sender.send('run:output', { text: d.toString(), isErr: false }))
   runProcess.stderr.on('data', d => event.sender.send('run:output', { text: d.toString(), isErr: true }))
   runProcess.on('exit', code => { runProcess = null; event.sender.send('run:exit', code ?? 0) })

@@ -89,9 +89,9 @@ export default function App() {
 
   // ── Run commands ─────────────────────────────────────────────────────────────
   const RUN_CONFIGS = {
-    py:  (f, d)    => ({ cmd: 'py',          args: [f],                                        cwd: d }),
-    js:  (f, d)    => ({ cmd: 'node',         args: [f],                                        cwd: d }),
-    ts:  (f, d)    => ({ cmd: 'npx',          args: ['ts-node', f],                             cwd: d }),
+    py:  (f, d)    => ({ cmd: 'python',        args: [f],                                        cwd: d }),
+    js:  (f, d)    => ({ cmd: 'powershell',   args: ['-NoProfile', '-Command', `node "${f}"`], cwd: d }),
+    ts:  (f, d)    => ({ cmd: 'powershell',   args: ['-NoProfile', '-Command', `npx ts-node "${f}"`], cwd: d }),
     c:   (f, d, n) => ({ cmd: 'powershell',   args: ['-NoProfile', '-Command', `gcc "${n}" -o _jout.exe; if ($?) { & './_jout.exe' }`], cwd: d }),
     cpp: (f, d, n) => ({ cmd: 'powershell',   args: ['-NoProfile', '-Command', `g++ "${n}" -o _jout.exe; if ($?) { & './_jout.exe' }`], cwd: d }),
     java:(f, d, n) => ({ cmd: 'powershell',   args: ['-NoProfile', '-Command', `javac "${n}"; if ($?) { java '${n.replace('.java','')}' }`], cwd: d }),
@@ -523,7 +523,7 @@ export default function App() {
         height: 30, background: jankTheme.accent, flexShrink: 0,
         display: 'flex', alignItems: 'center', padding: '0 12px', gap: 20,
       }}>
-        <span style={{ color: 'white', fontSize: 7, fontWeight: 700, letterSpacing: '0.05em' }}>JankEdit v1.6.4</span>
+        <span style={{ color: 'white', fontSize: 7, fontWeight: 700, letterSpacing: '0.05em' }}>JankEdit v1.6.5</span>
         {isGitRepo && gitBranch && (
           <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 6 }}>⎇ {gitBranch}</span>
         )}
